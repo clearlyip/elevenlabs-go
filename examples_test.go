@@ -120,7 +120,7 @@ immediately, even if the buffer isn't full.`
 		"pNInz6obpgDQGcFmaJgB",
 		"eleven_multilingual_v1",
 		elevenlabs.TextToSpeechInputStreamingRequest{
-			Text:                 message,
+			Text:                 " ",
 			TryTriggerGeneration: true,
 			GenerationConfig: &elevenlabs.GenerationConfig{
 				ChunkLengthSchedule: []int{50},
