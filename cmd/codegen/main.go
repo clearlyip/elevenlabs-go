@@ -119,7 +119,7 @@ func ptrRcvMethods(f *ast.File, receiverTypeStr string) []*ast.FuncDecl {
 	for _, decl := range f.Decls {
 		if funcDecl, ok := decl.(*ast.FuncDecl); ok &&
 			funcDecl.Name.IsExported() &&
-			funcDecl.Recv != nil && len(funcDecl.Recv.List) > 0 { //If declaration is a exported function that has a receiver (i.e. method)
+			funcDecl.Recv != nil && len(funcDecl.Recv.List) > 0 { // If declaration is a exported function that has a receiver (i.e. method)
 			if ptrRecvExpr, ok := funcDecl.Recv.List[0].Type.(*ast.StarExpr); ok &&
 				fmt.Sprint(ptrRecvExpr.X) == receiverTypeStr {
 				methodDecls = append(methodDecls, funcDecl)

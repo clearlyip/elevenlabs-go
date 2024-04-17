@@ -6,19 +6,25 @@ package elevenlabs
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	neturl "net/url"
 	"sync"
 	"time"
+
+	"nhooyr.io/websocket"
+	"nhooyr.io/websocket/wsjson"
 )
 
 const (
-	elevenlabsBaseURL = "https://api.elevenlabs.io/v1"
-	defaultTimeout    = 30 * time.Second
-	contentTypeJSON   = "application/json"
+	elevenlabsBaseURL   = "https://api.elevenlabs.io/v1"
+	elevenlabsBaseWSURL = "wss://api.elevenlabs.io/v1"
+	defaultTimeout      = 30 * time.Second
+	contentTypeJSON     = "application/json"
 )
 
 var (
@@ -38,10 +44,11 @@ type QueryFunc func(*url.Values)
 // (which defaults to 30 seconds) can be modified with SetAPIKey and SetTimeout respectively, but the parent
 // context is fixed and is set to context.Background().
 type Client struct {
-	baseURL string
-	apiKey  string
-	timeout time.Duration
-	ctx     context.Context
+	baseURL   string
+	baseWSUrl string
+	apiKey    string
+	timeout   time.Duration
+	ctx       context.Context
 }
 
 func getDefaultClient() *Client {
@@ -78,7 +85,7 @@ func SetTimeout(timeout time.Duration) {
 //
 // It returns a pointer to a newly created Client.
 func NewClient(ctx context.Context, apiKey string, reqTimeout time.Duration) *Client {
-	return &Client{baseURL: elevenlabsBaseURL, apiKey: apiKey, timeout: reqTimeout, ctx: ctx}
+	return &Client{baseURL: elevenlabsBaseURL, baseWSUrl: elevenlabsBaseWSURL, apiKey: apiKey, timeout: reqTimeout, ctx: ctx}
 }
 
 func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method, url string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
@@ -135,6 +142,103 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 
 	_, err = io.Copy(RespBodyWriter, resp.Body)
 	return err
+}
+
+// doInputStreamingRequest is a helper function that handles the streaming of text to speech audio data.
+//
+// Based on the Python implementation at https://github.com/elevenlabs/elevenlabs-python/blob/8102e6f0369fb9da3e11b3355aac1bf5983292fa/src/elevenlabs/realtime_tts.py#L41
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Reader, RespBodyWriter io.Writer, url string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	headers := http.Header{}
+	headers.Add("Accept", "*/*")
+	if contentType != "" {
+		headers.Add("Content-Type", contentType)
+	}
+	if c.apiKey != "" {
+		headers.Add("xi-api-key", c.apiKey)
+	}
+
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return err
+	}
+
+	q := u.Query()
+	for _, qf := range queries {
+		qf(&q)
+	}
+	u.RawQuery = q.Encode()
+
+	conn, _, err := websocket.Dial(timeoutCtx, u.String(), &websocket.DialOptions{
+		HTTPHeader: headers,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.CloseNow() }()
+
+	if err := wsjson.Write(timeoutCtx, conn, bodyBuf); err != nil {
+		return err
+	}
+
+	textCh := make(chan string)
+	chunkCh := make(chan string)
+
+	go readText(TextReader, textCh)
+	go textChunker(chunkCh, textCh)
+
+	for chunk := range chunkCh {
+		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
+		if err := wsjson.Write(timeoutCtx, conn, ch); err != nil {
+			return err
+		}
+		var resp streamingInputResponse
+		if err := wsjson.Read(timeoutCtx, conn, &resp); err != nil {
+			return err
+		}
+		if resp.Audio != "" {
+			b, err := base64.StdEncoding.DecodeString(resp.Audio)
+			if err != nil {
+				return err
+			}
+
+			if _, err := RespBodyWriter.Write(b); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := wsjson.Write(timeoutCtx, conn, map[string]string{"text": ""}); err != nil {
+		return err
+	}
+
+	for {
+		var resp streamingInputResponse
+		wserr := wsjson.Read(timeoutCtx, conn, &resp)
+		if wserr != nil {
+			if websocket.CloseStatus(wserr) != websocket.StatusNormalClosure {
+				return wserr
+			}
+		}
+		if resp.Audio != "" {
+			b, err := base64.StdEncoding.DecodeString(resp.Audio)
+			if err != nil {
+				return err
+			}
+
+			if _, err := RespBodyWriter.Write(b); err != nil {
+				return err
+			}
+		}
+		if wserr != nil {
+			break
+		}
+	}
+
+	_ = conn.Close(websocket.StatusNormalClosure, "")
+	return nil
 }
 
 // LatencyOptimizations returns a QueryFunc that sets the http query 'optimize_streaming_latency' to
@@ -220,7 +324,7 @@ func (c *Client) TextToSpeech(voiceID string, ttsReq TextToSpeechRequest, querie
 	return b.Bytes(), nil
 }
 
-// TextToSpeech converts and streams a given text to speech audio using a certain voice.
+// TextToSpeechStream converts and streams a given text to speech audio using a certain voice.
 //
 // It takes an io.Writer argument to which the streamed audio will be copied, a string argument that represents the
 // ID of the voice to be used for the text to speech conversion, a TextToSpeechRequest argument that contain the text
@@ -237,6 +341,22 @@ func (c *Client) TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsR
 	}
 
 	return c.doRequest(c.ctx, streamWriter, http.MethodPost, fmt.Sprintf("%s/text-to-speech/%s/stream", c.baseURL, voiceID), bytes.NewBuffer(reqBody), contentTypeJSON, queries...)
+}
+
+// TextToSpeechInputStream converts and returns a given text to speech audio using a certain voice.
+//
+// It takes an io.Reader argument that contains the text to be converted to speech, an io.Writer argument to which
+// the audio data will be written, a string argument that represents the ID of the voice to be used for the text to
+// speech conversion, a modelID string argument that represents the ID of the model to be used for the conversion,
+// a TextToSpeechInputStreamingRequest argument that contains the settings for the conversion and
+// an optional list of QueryFunc 'queries' to modify the request.
+func (c *Client) TextToSpeechInputStream(textReader io.Reader, streamWriter io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
+	reqBody, err := json.Marshal(ttsReq)
+	if err != nil {
+		return err
+	}
+
+	return c.doInputStreamingRequest(c.ctx, textReader, streamWriter, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), bytes.NewBuffer(reqBody), contentTypeJSON, queries...)
 }
 
 // GetModels retrieves the list of all available models.
@@ -453,7 +573,7 @@ func (c *Client) GetHistory(queries ...QueryFunc) (GetHistoryResponse, NextHisto
 	}
 
 	nextPageFunc := func(qf ...QueryFunc) (GetHistoryResponse, NextHistoryPageFunc, error) {
-		//TODO copy to new slice to avoid unexpected issues if query changes after few calls.
+		// TODO copy to new slice to avoid unexpected issues if query changes after few calls.
 		qf = append(queries, append(qf, StartAfter(historyResp.LastHistoryItemId))...)
 		return c.GetHistory(qf...)
 	}

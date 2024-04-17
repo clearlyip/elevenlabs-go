@@ -38,6 +38,17 @@ type TextToSpeechRequest struct {
 	VoiceSettings *VoiceSettings `json:"voice_settings,omitempty"`
 }
 
+type GenerationConfig struct {
+	ChunkLengthSchedule []int `json:"chunk_length_schedule"`
+}
+
+type TextToSpeechInputStreamingRequest struct {
+	Text                 string         `json:"text"`
+	TryTriggerGeneration bool           `json:"try_trigger_generation"`
+	VoiceSettings        *VoiceSettings `json:"voice_settings,omitempty"`
+	GenerationConfig     *GenerationConfig
+}
+
 type GetVoicesResponse struct {
 	Voices []Voice `json:"voices"`
 }

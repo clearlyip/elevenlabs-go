@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/haguro/elevenlabs-go"
@@ -67,6 +68,63 @@ immediately, even if the buffer isn't full.`
 		elevenlabs.TextToSpeechRequest{
 			Text:    message,
 			ModelID: "eleven_multilingual_v1",
+		}); err != nil {
+		log.Fatalf("Got %T error: %q\n", err, err)
+	}
+
+	// Close the pipe when all stream has been copied to the pipe
+	if err := pipe.Close(); err != nil {
+		log.Fatalf("Could not close pipe: %s", err)
+	}
+	log.Print("Streaming finished.")
+
+	// Wait for mpv to exit. With the pipe closed, it will do that as
+	// soon as it finishes playing
+	if err := cmd.Wait(); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Print("All done.")
+}
+
+func ExampleClient_TextToSpeechInputStream() {
+	message := `The concept of "flushing" typically applies to I/O buffers in many programming 
+languages, which store data temporarily in memory before writing it to a more permanent location
+like a file or a network connection. Flushing the buffer means writing all the buffered data
+immediately, even if the buffer isn't full.`
+
+	// Set your API key
+	elevenlabs.SetAPIKey("your-api-key")
+
+	// Set a large enough timeout to ensure the stream is not interrupted.
+	elevenlabs.SetTimeout(1 * time.Minute)
+
+	// We'll use mpv to play the audio from the stream piped to standard input
+	cmd := exec.CommandContext(context.Background(), "mpv", "--no-cache", "--no-terminal", "--", "fd://0")
+
+	// Get a pipe connected to the mpv's standard input
+	pipe, err := cmd.StdinPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Attempt to run the command in a separate process
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Stream the audio to the pipe connected to mpv's standard input
+	if err := elevenlabs.TextToSpeechInputStream(
+		strings.NewReader(message),
+		pipe,
+		"pNInz6obpgDQGcFmaJgB",
+		"eleven_multilingual_v1",
+		elevenlabs.TextToSpeechInputStreamingRequest{
+			Text:                 message,
+			TryTriggerGeneration: true,
+			GenerationConfig: &elevenlabs.GenerationConfig{
+				ChunkLengthSchedule: []int{50},
+			},
 		}); err != nil {
 		log.Fatalf("Got %T error: %q\n", err, err)
 	}
