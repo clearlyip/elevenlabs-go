@@ -16,8 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -147,10 +146,7 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 // doInputStreamingRequest is a helper function that handles the streaming of text to speech audio data.
 //
 // Based on the Python implementation at https://github.com/elevenlabs/elevenlabs-python/blob/8102e6f0369fb9da3e11b3355aac1bf5983292fa/src/elevenlabs/realtime_tts.py#L41
-func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Reader, RespBodyWriter io.Writer, url string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Reader, RespBodyWriter io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
 	if contentType != "" {
@@ -171,15 +167,13 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 	}
 	u.RawQuery = q.Encode()
 
-	conn, _, err := websocket.Dial(timeoutCtx, u.String(), &websocket.DialOptions{
-		HTTPHeader: headers,
-	})
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), headers)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.CloseNow() }()
+	defer func() { _ = conn.Close() }()
 
-	if err := wsjson.Write(timeoutCtx, conn, bodyBuf); err != nil {
+	if err := conn.WriteJSON(req); err != nil {
 		return err
 	}
 
@@ -189,55 +183,49 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 	go readText(TextReader, textCh)
 	go textChunker(chunkCh, textCh)
 
-	for chunk := range chunkCh {
-		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-		if err := wsjson.Write(timeoutCtx, conn, ch); err != nil {
-			return err
-		}
-		var resp streamingInputResponse
-		if err := wsjson.Read(timeoutCtx, conn, &resp); err != nil {
-			return err
-		}
-		if resp.Audio != "" {
-			b, err := base64.StdEncoding.DecodeString(resp.Audio)
-			if err != nil {
-				return err
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for {
+			var resp streamingInputResponse
+			wserr := conn.ReadJSON(&resp)
+			if wserr != nil {
+				break
 			}
 
-			if _, err := RespBodyWriter.Write(b); err != nil {
-				return err
+			if resp.Audio != "" {
+				b, err := base64.StdEncoding.DecodeString(resp.Audio)
+				if err != nil {
+					break
+				}
+
+				if _, err := RespBodyWriter.Write(b); err != nil {
+					break
+				}
 			}
+
+			if wserr != nil {
+				break
+			}
+		}
+	}(&wg)
+
+	for chunk := range chunkCh {
+		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
+
+		if err := conn.WriteJSON(ch); err != nil {
+			return err
 		}
 	}
 
-	if err := wsjson.Write(timeoutCtx, conn, map[string]string{"text": ""}); err != nil {
+	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 		return err
 	}
 
-	for {
-		var resp streamingInputResponse
-		wserr := wsjson.Read(timeoutCtx, conn, &resp)
-		if wserr != nil {
-			if websocket.CloseStatus(wserr) != websocket.StatusNormalClosure {
-				return wserr
-			}
-		}
-		if resp.Audio != "" {
-			b, err := base64.StdEncoding.DecodeString(resp.Audio)
-			if err != nil {
-				return err
-			}
+	wg.Wait()
 
-			if _, err := RespBodyWriter.Write(b); err != nil {
-				return err
-			}
-		}
-		if wserr != nil {
-			break
-		}
-	}
-
-	_ = conn.Close(websocket.StatusNormalClosure, "")
+	_ = conn.Close()
 	return nil
 }
 
@@ -351,12 +339,7 @@ func (c *Client) TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsR
 // a TextToSpeechInputStreamingRequest argument that contains the settings for the conversion and
 // an optional list of QueryFunc 'queries' to modify the request.
 func (c *Client) TextToSpeechInputStream(textReader io.Reader, streamWriter io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
-	reqBody, err := json.Marshal(ttsReq)
-	if err != nil {
-		return err
-	}
-
-	return c.doInputStreamingRequest(c.ctx, textReader, streamWriter, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), bytes.NewBuffer(reqBody), contentTypeJSON, queries...)
+	return c.doInputStreamingRequest(c.ctx, textReader, streamWriter, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
 }
 
 // GetModels retrieves the list of all available models.

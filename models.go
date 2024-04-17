@@ -47,7 +47,6 @@ type TextToSpeechInputStreamingRequest struct {
 	TryTriggerGeneration bool              `json:"try_trigger_generation"`
 	VoiceSettings        *VoiceSettings    `json:"voice_settings,omitempty"`
 	GenerationConfig     *GenerationConfig `json:"generation_config,omitempty"`
-	XiApiKey             string            `json:"xi_api_key,omitempty"`
 }
 
 type GetVoicesResponse struct {

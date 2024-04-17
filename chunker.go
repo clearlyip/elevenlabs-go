@@ -2,13 +2,14 @@ package elevenlabs
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strings"
 )
 
 type textChunk struct {
 	Text                 string `json:"text"`
-	TryTriggerGeneration bool   `json:"try_trigger_generation,omitempty"`
+	TryTriggerGeneration bool   `json:"try_trigger_generation"`
 }
 
 type streamingInputResponse struct {
@@ -22,7 +23,7 @@ func readText(r io.Reader, text chan<- string) {
 
 	for scanner.Scan() {
 		word := scanner.Text()
-		text <- word
+		text <- fmt.Sprintf("%s ", word)
 	}
 
 	close(text)
