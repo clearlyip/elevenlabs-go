@@ -146,7 +146,7 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 // doInputStreamingRequest is a helper function that handles the streaming of text to speech audio data.
 //
 // Based on the Python implementation at https://github.com/elevenlabs/elevenlabs-python/blob/8102e6f0369fb9da3e11b3355aac1bf5983292fa/src/elevenlabs/realtime_tts.py#L41
-func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Reader, RespBodyWriter io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, RespBodyWriter io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
 	if contentType != "" {
@@ -177,11 +177,11 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 		return err
 	}
 
-	textCh := make(chan string)
-	chunkCh := make(chan string)
+	// textCh := make(chan string)
+	// chunkCh := make(chan string)
 
-	go readText(TextReader, textCh)
-	go textChunker(chunkCh, textCh)
+	// go readText(TextReader, chunkCh)
+	// go textChunker(chunkCh, textCh)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -211,7 +211,10 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 		}
 	}(&wg)
 
-	for chunk := range chunkCh {
+	for chunk := range TextReader {
+		if chunk == "" {
+			break
+		}
 		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
 
 		if err := conn.WriteJSON(ch); err != nil {
@@ -338,7 +341,7 @@ func (c *Client) TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsR
 // speech conversion, a modelID string argument that represents the ID of the model to be used for the conversion,
 // a TextToSpeechInputStreamingRequest argument that contains the settings for the conversion and
 // an optional list of QueryFunc 'queries' to modify the request.
-func (c *Client) TextToSpeechInputStream(textReader io.Reader, streamWriter io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
+func (c *Client) TextToSpeechInputStream(textReader chan string, streamWriter io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
 	return c.doInputStreamingRequest(c.ctx, textReader, streamWriter, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
 }
 

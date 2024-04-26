@@ -26,7 +26,7 @@ func readText(r io.Reader, text chan<- string) {
 		text <- fmt.Sprintf("%s ", word)
 	}
 
-	close(text)
+	// close(text)
 }
 
 // textChunker reads chunks from a slice of strings and writes them to the provided io.Writer
