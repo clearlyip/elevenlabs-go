@@ -1,4 +1,4 @@
-module github.com/haguro/elevenlabs-go
+module github.com/clearlyip/elevenlabs-go
 
 go 1.18
 
