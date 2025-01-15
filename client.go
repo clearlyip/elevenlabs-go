@@ -183,9 +183,10 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	// go readText(TextReader, chunkCh)
 	// go textChunker(chunkCh, textCh)
 
+	errCh := make(chan error, 1)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
+	go func(wg *sync.WaitGroup, errCh chan<- error) {
 		defer wg.Done()
 		for {
 			var resp streamingInputResponse
@@ -209,7 +210,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				break
 			}
 		}
-	}(&wg)
+	}(&wg, errCh)
 
 	for chunk := range TextReader {
 		if chunk == "" {
@@ -227,6 +228,13 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	}
 
 	wg.Wait()
+
+	// Errors?
+	select {
+	case readErr := <-errCh:
+		return readErr
+	default:
+	}
 
 	_ = conn.Close()
 	return nil
