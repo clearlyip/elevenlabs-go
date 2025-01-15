@@ -183,33 +183,33 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 	go readText(TextReader, textCh)
 	go textChunker(chunkCh, textCh)
 
+	errCh := make(chan error, 1)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
+	go func(wg *sync.WaitGroup, errCh chan<- error) {
 		defer wg.Done()
 		for {
 			var resp streamingInputResponse
 			wserr := conn.ReadJSON(&resp)
 			if wserr != nil {
+				errCh <- wserr
 				break
 			}
 
 			if resp.Audio != "" {
 				b, err := base64.StdEncoding.DecodeString(resp.Audio)
 				if err != nil {
+					errCh <- err
 					break
 				}
 
 				if _, err := RespBodyWriter.Write(b); err != nil {
+					errCh <- err
 					break
 				}
 			}
-
-			if wserr != nil {
-				break
-			}
 		}
-	}(&wg)
+	}(&wg, errCh)
 
 	for chunk := range chunkCh {
 		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
@@ -224,6 +224,13 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader io.Read
 	}
 
 	wg.Wait()
+
+	// Errors?
+	select {
+	case readErr := <-errCh:
+		return readErr
+	default:
+	}
 
 	_ = conn.Close()
 	return nil
