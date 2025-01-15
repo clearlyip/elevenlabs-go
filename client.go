@@ -177,12 +177,6 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 		return err
 	}
 
-	// textCh := make(chan string)
-	// chunkCh := make(chan string)
-
-	// go readText(TextReader, chunkCh)
-	// go textChunker(chunkCh, textCh)
-
 	errCh := make(chan error, 1)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -192,22 +186,21 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 			var resp streamingInputResponse
 			wserr := conn.ReadJSON(&resp)
 			if wserr != nil {
+				errCh <- wserr
 				break
 			}
 
 			if resp.Audio != "" {
 				b, err := base64.StdEncoding.DecodeString(resp.Audio)
 				if err != nil {
+					errCh <- err
 					break
 				}
 
 				if _, err := RespBodyWriter.Write(b); err != nil {
+					errCh <- err
 					break
 				}
-			}
-
-			if wserr != nil {
-				break
 			}
 		}
 	}(&wg, errCh)
