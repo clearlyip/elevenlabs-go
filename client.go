@@ -143,7 +143,7 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 }
 
 type StreamingOutputResponse struct {
-	Audio               []byte                    `json:"audio"`
+	Audio               string                    `json:"audio"`
 	IsFinal             bool                      `json:"isFinal"`
 	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
 	Alignment           StreamingAlignmentSegment `json:"alignment"`
