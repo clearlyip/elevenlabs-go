@@ -218,6 +218,9 @@ InputWatcher:
 			if !ok {
 				break InputWatcher
 			}
+			if chunk == "" {
+				break InputWatcher
+			}
 			// Send the chunk to the server.
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
 			if werr := conn.WriteJSON(ch); werr != nil {
