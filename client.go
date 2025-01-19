@@ -6,7 +6,6 @@ package elevenlabs
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -143,10 +142,23 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	return err
 }
 
-// doInputStreamingRequest is a helper function that handles the streaming of text to speech audio data.
-//
-// Based on the Python implementation at https://github.com/elevenlabs/elevenlabs-python/blob/8102e6f0369fb9da3e11b3355aac1bf5983292fa/src/elevenlabs/realtime_tts.py#L41
-func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, RespBodyWriter io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+type StreamingOutputResponse struct {
+	Audio               []byte                    `json:"audio"`
+	IsFinal             bool                      `json:"isFinal"`
+	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
+	Alignment           StreamingAlignmentSegment `json:"alignment"`
+}
+
+type StreamingAlignmentSegment struct {
+	CharStartTimesMs []int    `json:"charStartTimesMs"`
+	CharDurationsMs  []int    `json:"charDurationsMs"`
+	Chars            []string `json:"chars"`
+}
+
+type WsStreamingOutputChannel chan StreamingOutputResponse
+
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
 	if contentType != "" {
@@ -167,59 +179,63 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	}
 	u.RawQuery = q.Encode()
 
+	// Make connection and send intial request
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), headers)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-
 	if err := conn.WriteJSON(req); err != nil {
 		return err
 	}
 
 	errCh := make(chan error, 1)
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
+
+	// Response watching
 	go func(wg *sync.WaitGroup, errCh chan<- error) {
 		defer wg.Done()
 		for {
-			var resp streamingInputResponse
-			wserr := conn.ReadJSON(&resp)
+			var response StreamingOutputResponse
+			wserr := conn.ReadJSON(&response)
 			if wserr != nil {
 				errCh <- wserr
 				break
 			}
-
-			if resp.Audio != "" {
-				b, err := base64.StdEncoding.DecodeString(resp.Audio)
-				if err != nil {
-					errCh <- err
-					break
-				}
-
-				if _, err := RespBodyWriter.Write(b); err != nil {
-					errCh <- err
-					break
-				}
-			}
+			ResponseChannel <- response
 		}
 	}(&wg, errCh)
 
-	for chunk := range TextReader {
-		if chunk == "" {
-			break
-		}
-		ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-
-		if err := conn.WriteJSON(ch); err != nil {
-			return err
+	// Input watching
+InputWatcher:
+	for {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+			break InputWatcher
+		case chunk, ok := <-TextReader:
+			if !ok {
+				break InputWatcher
+			}
+			// Send the chunk to the server.
+			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
+			if werr := conn.WriteJSON(ch); werr != nil {
+				// On write failure, signal error & break.
+				errCh <- werr
+				break InputWatcher
+			}
 		}
 	}
 
+	// Send final "" to close out TTS buffer
 	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
-		return err
+		if ctx.Err() == nil {
+			errCh <- err
+		}
 	}
 
+	// Wait for response watcher to finish
 	wg.Wait()
 
 	// Errors?
@@ -227,6 +243,11 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	case readErr := <-errCh:
 		return readErr
 	default:
+	}
+
+	// Conext err?
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	_ = conn.Close()
