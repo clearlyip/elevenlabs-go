@@ -159,7 +159,14 @@ type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true
-	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 514\n")
+	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 619\n")
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("🌱ELEVENLABS DRIVER: Recovered from panic:", r)
+		}
+	}()
+
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
 	if contentType != "" {
