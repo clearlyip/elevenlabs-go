@@ -158,7 +158,7 @@ type StreamingAlignmentSegment struct {
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
-
+	driverActive := true
 	fmt.Println("🌱ELEVENLABS DRIVER: doInputStreamingRequest()")
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -206,6 +206,9 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (0).")
 				return
 			default:
+				if !driverActive {
+					return
+				}
 				var response StreamingOutputResponse
 				if err := conn.ReadJSON(&response); err != nil {
 					fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
@@ -226,6 +229,7 @@ InputWatcher:
 		select {
 		case <-ctx.Done():
 			fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
+			driverActive = false
 			conn.Close()
 			wg.Wait()
 			return nil
@@ -249,11 +253,13 @@ InputWatcher:
 	}
 
 	// Send final "" to close out TTS buffer
-	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
-		if ctx.Err() == nil {
-			fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
-			if errCh != nil {
-				errCh <- err
+	if driverActive {
+		if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
+			if ctx.Err() == nil {
+				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
+				if errCh != nil {
+					errCh <- err
+				}
 			}
 		}
 	}
