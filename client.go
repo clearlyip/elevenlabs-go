@@ -265,7 +265,9 @@ InputWatcher:
 	}
 
 	// Wait
+	fmt.Println("🌱ELEVENLABS DRIVER: Running wg.Wait() A")
 	wg.Wait()
+	fmt.Println("🌱ELEVENLABS DRIVER: Past wg.Wait() A")
 
 	// Errors?
 	select {
