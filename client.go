@@ -248,9 +248,9 @@ InputWatcher:
 			fmt.Printf("🌱ELEVENLABS DRIVER: Got text chunk '%s' sending to socket <- <- <-\n", chunk)
 			if err := conn.WriteJSON(ch); err != nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
-				if errCh != nil {
-					errCh <- err
-				}
+				driverActive = false
+				errCh <- err
+				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2 wrote to error channel.")
 				break InputWatcher
 			}
 		}
