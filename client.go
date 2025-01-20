@@ -210,6 +210,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					fmt.Println("🌱ELEVENLABS DRIVER: Inactive detected exiting read loop.")
 					return
 				}
+				fmt.Println("🌱ELEVENLABS DRIVER: Waiting for JSON from socket...")
 				var response StreamingOutputResponse
 				if err := conn.ReadJSON(&response); err != nil {
 					fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
@@ -237,13 +238,14 @@ InputWatcher:
 			break InputWatcher
 		case chunk, ok := <-TextReader:
 			if !ok || !driverActive {
+				fmt.Println("🌱ELEVENLABS DRIVER: !ok || !driverActive exiting input loop.")
 				break InputWatcher
 			}
 			if chunk == "" {
 				break
 			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-			fmt.Println("🌱ELEVENLABS DRIVER: Got text chunk, sending to socket <- <- <-")
+			fmt.Printf("🌱ELEVENLABS DRIVER: Got text chunk '%s' sending to socket <- <- <-\n", chunk)
 			if err := conn.WriteJSON(ch); err != nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
 				if errCh != nil {
