@@ -207,6 +207,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				return
 			default:
 				if !driverActive {
+					fmt.Println("🌱ELEVENLABS DRIVER: Inactive detected exiting read loop.")
 					return
 				}
 				var response StreamingOutputResponse
@@ -220,6 +221,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				fmt.Println("🌱ELEVENLABS DRIVER: Sending response -> -> ->")
 				ResponseChannel <- response
 			}
+
 		}
 	}(&wg, errCh)
 
