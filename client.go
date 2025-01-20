@@ -159,13 +159,8 @@ type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true
+	driverError := false
 	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 619\n")
-
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("🌱ELEVENLABS DRIVER: Recovered from panic:", r)
-		}
-	}()
 
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -200,6 +195,9 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 		return err
 	}
 
+	// Input watcher
+	inputCtx, inputCancel := context.WithCancel(context.Background())
+
 	errCh := make(chan error, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -225,6 +223,8 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 						fmt.Println("🌱ELEVENLABS DRIVER: Error A: driver active, signaling the error")
 						errCh <- err
 					}
+					driverError = true
+					inputCancel()
 					return
 				}
 				fmt.Println("🌱ELEVENLABS DRIVER: Sending to ResponseChannel ->")
@@ -238,11 +238,12 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 InputWatcher:
 	for {
 		select {
+		case <-inputCtx.Done():
+			fmt.Println("🌱ELEVENLABS DRIVER: InputWatcher cancel SIGNAL (x).")
+			break InputWatcher
 		case <-ctx.Done():
 			fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
 			driverActive = false
-			// conn.Close()
-			// wg.Wait()
 			break InputWatcher
 		case chunk, ok := <-TextReader:
 			if !ok || !driverActive {
@@ -278,10 +279,8 @@ InputWatcher:
 	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
 	conn.Close()
 
-	// Wait
-	fmt.Println("🌱ELEVENLABS DRIVER: Running wg.Wait() A")
+	// Wait to make sure the response watcher has finished
 	wg.Wait()
-	fmt.Println("🌱ELEVENLABS DRIVER: Past wg.Wait() A")
 
 	// Errors?
 	select {
