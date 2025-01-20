@@ -266,6 +266,9 @@ InputWatcher:
 		}
 	}
 
+	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
+	conn.Close()
+
 	// Wait
 	fmt.Println("🌱ELEVENLABS DRIVER: Running wg.Wait() A")
 	wg.Wait()
@@ -280,8 +283,6 @@ InputWatcher:
 	default:
 	}
 
-	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
-	conn.Close()
 	return nil
 }
 
