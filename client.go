@@ -230,11 +230,11 @@ InputWatcher:
 		case <-ctx.Done():
 			fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
 			driverActive = false
-			conn.Close()
-			wg.Wait()
-			return nil
+			// conn.Close()
+			// wg.Wait()
+			break InputWatcher
 		case chunk, ok := <-TextReader:
-			if !ok {
+			if !ok || !driverActive {
 				break InputWatcher
 			}
 			if chunk == "" {
@@ -277,6 +277,7 @@ InputWatcher:
 	}
 
 	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
+	conn.Close()
 	return nil
 }
 
