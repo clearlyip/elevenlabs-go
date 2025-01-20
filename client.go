@@ -160,7 +160,7 @@ type WsStreamingOutputChannel chan StreamingOutputResponse
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true
 	driverError := false
-	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 619\n")
+	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 644\n")
 
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -286,7 +286,7 @@ InputWatcher:
 	select {
 	case readErr := <-errCh:
 		fmt.Println("🌱ELEVENLABS DRIVER: Returning an error", readErr)
-		if driverActive {
+		if driverActive || driverError {
 			return readErr
 		} else {
 			return nil
