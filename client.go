@@ -242,7 +242,8 @@ InputWatcher:
 				break InputWatcher
 			}
 			if chunk == "" {
-				break
+				fmt.Println("🌱ELEVENLABS DRIVER: GOT A '' CHUNK.")
+				//break
 			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
 			fmt.Printf("🌱ELEVENLABS DRIVER: Got text chunk '%s' sending to socket <- <- <-\n", chunk)
