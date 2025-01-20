@@ -222,9 +222,10 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					if driverActive {
 						fmt.Println("🌱ELEVENLABS DRIVER: Error A: driver active, signaling the error")
 						errCh <- err
+
+						driverError = true
+						inputCancel()
 					}
-					driverError = true
-					inputCancel()
 					return
 				}
 				fmt.Println("🌱ELEVENLABS DRIVER: Sending to ResponseChannel ->")
