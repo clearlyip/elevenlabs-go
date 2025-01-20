@@ -159,7 +159,7 @@ type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 
-	fmt.Println("ELEVENLABS DRIVER: doInputStreamingRequest()")
+	fmt.Println("🌱ELEVENLABS DRIVER: doInputStreamingRequest()")
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
 	if contentType != "" {
@@ -171,7 +171,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 
 	u, err := neturl.Parse(url)
 	if err != nil {
-		fmt.Println("ELEVENLABS DRIVER: Error parsing URL: ", err)
+		fmt.Println("🌱ELEVENLABS DRIVER: Error parsing URL: ", err)
 		return err
 	}
 
@@ -189,7 +189,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 
 	// Send initial request
 	if err := conn.WriteJSON(req); err != nil {
-		fmt.Println("ELEVENLABS DRIVER: Error JSON1: ", err)
+		fmt.Println("🌱ELEVENLABS DRIVER: Error JSON1: ", err)
 		return err
 	}
 
@@ -203,11 +203,11 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 		for {
 			var response StreamingOutputResponse
 			if err := conn.ReadJSON(&response); err != nil {
-				fmt.Println("ELEVENLABS DRIVER: Error A: ", err)
+				fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
 				errCh <- err
 				return
 			}
-			fmt.Println("ELEVENLABS DRIVER: Sending response to channel...")
+			fmt.Println("🌱ELEVENLABS DRIVER: Sending response -> -> ->")
 			ResponseChannel <- response
 		}
 	}(&wg, errCh)
@@ -217,8 +217,10 @@ InputWatcher:
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
-			return ctx.Err()
+			fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
+			conn.Close()
+			wg.Wait()
+			return nil
 		case chunk, ok := <-TextReader:
 			if !ok {
 				break InputWatcher
@@ -227,9 +229,9 @@ InputWatcher:
 				break
 			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-			fmt.Println("ELEVENLABS DRIVER: Got text chunk, sending to socket...")
+			fmt.Println("🌱ELEVENLABS DRIVER: Got text chunk, sending to socket <- <- <-")
 			if err := conn.WriteJSON(ch); err != nil {
-				fmt.Println("ELEVENLABS DRIVER: Error JSON2.", err)
+				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
 
 				errCh <- err
 				break InputWatcher
@@ -240,7 +242,7 @@ InputWatcher:
 	// Send final "" to close out TTS buffer
 	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 		if ctx.Err() == nil {
-			fmt.Println("ELEVENLABS DRIVER: Error JSON3.", err)
+			fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
 
 			errCh <- err
 		}
@@ -252,12 +254,12 @@ InputWatcher:
 	// Errors?
 	select {
 	case readErr := <-errCh:
-		fmt.Println("ELEVENLABS DRIVER: Returning an error", readErr)
+		fmt.Println("🌱ELEVENLABS DRIVER: Returning an error", readErr)
 		return readErr
 	default:
 	}
 
-	fmt.Println("ELEVENLABS DRIVER: Completing")
+	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
 	return nil
 }
 
