@@ -226,6 +226,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 						driverError = true
 						inputCancel()
 					}
+					fmt.Println("🌱ELEVENLABS DRIVER: Error A: return")
 					return
 				}
 				fmt.Println("🌱ELEVENLABS DRIVER: Sending to ResponseChannel ->")
@@ -280,8 +281,12 @@ InputWatcher:
 	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
 	conn.Close()
 
+	fmt.Println("🌱ELEVENLABS DRIVER: Connection closed.")
+
 	// Wait to make sure the response watcher has finished
 	wg.Wait()
+
+	fmt.Println("🌱ELEVENLABS DRIVER: wg.Wait() done.")
 
 	// Errors?
 	select {
@@ -295,6 +300,7 @@ InputWatcher:
 	default:
 	}
 
+	fmt.Println("🌱ELEVENLABS DRIVER: No errors.")
 	return nil
 }
 
