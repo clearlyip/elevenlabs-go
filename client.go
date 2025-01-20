@@ -201,14 +201,22 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	go func(wg *sync.WaitGroup, errCh chan<- error) {
 		defer wg.Done()
 		for {
-			var response StreamingOutputResponse
-			if err := conn.ReadJSON(&response); err != nil {
-				fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
-				errCh <- err
+			select {
+			case <-ctx.Done():
+				fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (0).")
 				return
+			default:
+				var response StreamingOutputResponse
+				if err := conn.ReadJSON(&response); err != nil {
+					fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
+					if errCh != nil {
+						errCh <- err
+					}
+					return
+				}
+				fmt.Println("🌱ELEVENLABS DRIVER: Sending response -> -> ->")
+				ResponseChannel <- response
 			}
-			fmt.Println("🌱ELEVENLABS DRIVER: Sending response -> -> ->")
-			ResponseChannel <- response
 		}
 	}(&wg, errCh)
 
@@ -232,8 +240,9 @@ InputWatcher:
 			fmt.Println("🌱ELEVENLABS DRIVER: Got text chunk, sending to socket <- <- <-")
 			if err := conn.WriteJSON(ch); err != nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
-
-				errCh <- err
+				if errCh != nil {
+					errCh <- err
+				}
 				break InputWatcher
 			}
 		}
@@ -243,8 +252,9 @@ InputWatcher:
 	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 		if ctx.Err() == nil {
 			fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
-
-			errCh <- err
+			if errCh != nil {
+				errCh <- err
+			}
 		}
 	}
 
@@ -255,6 +265,7 @@ InputWatcher:
 	select {
 	case readErr := <-errCh:
 		fmt.Println("🌱ELEVENLABS DRIVER: Returning an error", readErr)
+		errCh = nil
 		return readErr
 	default:
 	}
