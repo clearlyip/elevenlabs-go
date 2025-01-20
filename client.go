@@ -214,12 +214,13 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				var response StreamingOutputResponse
 				if err := conn.ReadJSON(&response); err != nil {
 					fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
-					if errCh != nil {
+					if driverActive {
+						fmt.Println("🌱ELEVENLABS DRIVER: Error A: driver active, signaling the error")
 						errCh <- err
 					}
 					return
 				}
-				fmt.Println("🌱ELEVENLABS DRIVER: Sending response -> -> ->")
+				fmt.Println("🌱ELEVENLABS DRIVER: Sending to ResponseChannel ->")
 				ResponseChannel <- response
 			}
 
@@ -262,9 +263,7 @@ InputWatcher:
 		if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 			if ctx.Err() == nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
-				if errCh != nil {
-					errCh <- err
-				}
+				errCh <- err
 			}
 		}
 	}
@@ -281,7 +280,6 @@ InputWatcher:
 	select {
 	case readErr := <-errCh:
 		fmt.Println("🌱ELEVENLABS DRIVER: Returning an error", readErr)
-		errCh = nil
 		if driverActive {
 			return readErr
 		} else {
