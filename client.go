@@ -179,12 +179,13 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	}
 	u.RawQuery = q.Encode()
 
-	// Make connection and send intial request
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), headers)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
+
+	// Send initial request
 	if err := conn.WriteJSON(req); err != nil {
 		return err
 	}
@@ -198,10 +199,9 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 		defer wg.Done()
 		for {
 			var response StreamingOutputResponse
-			wserr := conn.ReadJSON(&response)
-			if wserr != nil {
-				errCh <- wserr
-				break
+			if err := conn.ReadJSON(&response); err != nil {
+				errCh <- err
+				return
 			}
 			ResponseChannel <- response
 		}
@@ -212,8 +212,7 @@ InputWatcher:
 	for {
 		select {
 		case <-ctx.Done():
-			_ = conn.Close()
-			break InputWatcher
+			return ctx.Err()
 		case chunk, ok := <-TextReader:
 			if !ok {
 				break InputWatcher
@@ -221,11 +220,9 @@ InputWatcher:
 			if chunk == "" {
 				break
 			}
-			// Send the chunk to the server.
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-			if werr := conn.WriteJSON(ch); werr != nil {
-				// On write failure, signal error & break.
-				errCh <- werr
+			if err := conn.WriteJSON(ch); err != nil {
+				errCh <- err
 				break InputWatcher
 			}
 		}
@@ -238,7 +235,7 @@ InputWatcher:
 		}
 	}
 
-	// Wait for response watcher to finish
+	// Wait
 	wg.Wait()
 
 	// Errors?
@@ -248,12 +245,6 @@ InputWatcher:
 	default:
 	}
 
-	// Conext err?
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	_ = conn.Close()
 	return nil
 }
 
