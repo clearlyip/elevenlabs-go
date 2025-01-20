@@ -267,7 +267,7 @@ InputWatcher:
 	fmt.Println("🌱ELEVENLABS DRIVER: Past InputWatcher")
 
 	// Send final "" to close out TTS buffer
-	if driverActive {
+	if driverActive && !driverError {
 		if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 			if ctx.Err() == nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
