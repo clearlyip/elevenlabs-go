@@ -219,7 +219,7 @@ InputWatcher:
 				break InputWatcher
 			}
 			if chunk == "" {
-				break InputWatcher
+				break
 			}
 			// Send the chunk to the server.
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
