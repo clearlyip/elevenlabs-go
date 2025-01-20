@@ -255,6 +255,7 @@ InputWatcher:
 			}
 		}
 	}
+	fmt.Println("🌱ELEVENLABS DRIVER: Past InputWatcher")
 
 	// Send final "" to close out TTS buffer
 	if driverActive {
