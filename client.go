@@ -158,9 +158,8 @@ type StreamingAlignmentSegment struct {
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
-	driverActive := true
-	driverError := false
-	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 706\n")
+	driverActive := true // Driver shut down?
+	driverError := false // Unexpected errors
 
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -173,7 +172,6 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 
 	u, err := neturl.Parse(url)
 	if err != nil {
-		fmt.Println("🌱ELEVENLABS DRIVER: Error parsing URL: ", err)
 		return err
 	}
 
@@ -208,31 +206,22 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 		for {
 			select {
 			case <-ctx.Done():
-				fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (0).")
 				return
 			default:
 				if !driverActive {
-					fmt.Println("🌱ELEVENLABS DRIVER: Inactive detected exiting read loop.")
 					return
 				}
-				fmt.Println("🌱ELEVENLABS DRIVER: Waiting for JSON from socket...")
 				var response StreamingOutputResponse
 				if err := conn.ReadJSON(&response); err != nil {
-					fmt.Println("🌱ELEVENLABS DRIVER: Error A: ", err)
 					if driverActive {
-						fmt.Println("🌱ELEVENLABS DRIVER: Error A: driver active, signaling the error")
 						errCh <- err
-
 						driverError = true
 						inputCancel()
 					}
-					fmt.Println("🌱ELEVENLABS DRIVER: Error A: return")
 					return
 				}
-				fmt.Println("🌱ELEVENLABS DRIVER: Sending to ResponseChannel ->")
 				ResponseChannel <- response
 			}
-
 		}
 	}(&wg, errCh)
 
@@ -241,58 +230,39 @@ InputWatcher:
 	for {
 		select {
 		case <-inputCtx.Done():
-			fmt.Println("🌱ELEVENLABS DRIVER: InputWatcher cancel SIGNAL (x).")
+			driverActive = false
 			break InputWatcher
 		case <-ctx.Done():
-			fmt.Println("🌱ELEVENLABS DRIVER: DONE SIGNAL RECEIVED (1).")
 			driverActive = false
 			break InputWatcher
 		case chunk, ok := <-TextReader:
 			if !ok || !driverActive {
-				fmt.Println("🌱ELEVENLABS DRIVER: !ok || !driverActive exiting input loop.")
 				break InputWatcher
 			}
-			if chunk == "" {
-				fmt.Println("🌱ELEVENLABS DRIVER: GOT A '' CHUNK.")
-				//break
-			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-			fmt.Println("🌱ELEVENLABS DRIVER: Got text chunk '" + chunk + "' sending to socket <- <- <-")
 			if err := conn.WriteJSON(ch); err != nil {
-				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
 				errCh <- err
-				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2 wrote to error channel.")
 				break InputWatcher
 			}
 		}
 	}
-	fmt.Println("🌱ELEVENLABS DRIVER: Past InputWatcher")
 
 	// Send final "" to close out TTS buffer
 	if driverActive && !driverError {
 		if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
 			if ctx.Err() == nil {
-				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON3.", err)
 				errCh <- err
 			}
 		}
 	}
-
-	fmt.Println("🌱ELEVENLABS DRIVER: Completing")
 	conn.Close()
-
-	fmt.Println("🌱ELEVENLABS DRIVER: Connection closed.")
-
-	// Wait to make sure the response watcher has finished
 	wg.Wait()
-
-	fmt.Println("🌱ELEVENLABS DRIVER: wg.Wait() done.")
 
 	// Errors?
 	select {
 	case readErr := <-errCh:
-		fmt.Println("🌱ELEVENLABS DRIVER: Returning an error", readErr)
 		if driverActive || driverError {
+			// Only send if the driver is active or the unexpected error flag is active
 			return readErr
 		} else {
 			return nil
@@ -300,7 +270,6 @@ InputWatcher:
 	default:
 	}
 
-	fmt.Println("🌱ELEVENLABS DRIVER: No errors.")
 	return nil
 }
 
