@@ -160,7 +160,7 @@ type WsStreamingOutputChannel chan StreamingOutputResponse
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true
 	driverError := false
-	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 644\n")
+	fmt.Println("\n🌱ELEVENLABS DRIVER: doInputStreamingRequest() 706\n")
 
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -257,7 +257,7 @@ InputWatcher:
 				//break
 			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
-			fmt.Printf("🌱ELEVENLABS DRIVER: Got text chunk '%s' sending to socket <- <- <-\n", chunk)
+			fmt.Println("🌱ELEVENLABS DRIVER: Got text chunk '" + chunk + "' sending to socket <- <- <-")
 			if err := conn.WriteJSON(ch); err != nil {
 				fmt.Println("🌱ELEVENLABS DRIVER: Error JSON2.", err)
 				errCh <- err
