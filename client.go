@@ -158,6 +158,8 @@ type StreamingAlignmentSegment struct {
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+	driverActive := true // Driver shut down?
+	driverError := false // Unexpected errors
 
 	headers := http.Header{}
 	headers.Add("Accept", "*/*")
@@ -187,8 +189,12 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 
 	// Send initial request
 	if err := conn.WriteJSON(req); err != nil {
+		fmt.Println("🌱ELEVENLABS DRIVER: Error JSON1: ", err)
 		return err
 	}
+
+	// Input watcher
+	inputCtx, inputCancel := context.WithCancel(context.Background())
 
 	errCh := make(chan error, 1)
 	var wg sync.WaitGroup
@@ -198,12 +204,24 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 	go func(wg *sync.WaitGroup, errCh chan<- error) {
 		defer wg.Done()
 		for {
-			var response StreamingOutputResponse
-			if err := conn.ReadJSON(&response); err != nil {
-				errCh <- err
+			select {
+			case <-ctx.Done():
 				return
+			default:
+				if !driverActive {
+					return
+				}
+				var response StreamingOutputResponse
+				if err := conn.ReadJSON(&response); err != nil {
+					if driverActive {
+						errCh <- err
+						driverError = true
+						inputCancel()
+					}
+					return
+				}
+				ResponseChannel <- response
 			}
-			ResponseChannel <- response
 		}
 	}(&wg, errCh)
 
@@ -211,14 +229,15 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 InputWatcher:
 	for {
 		select {
+		case <-inputCtx.Done():
+			driverActive = false
+			break InputWatcher
 		case <-ctx.Done():
-			return ctx.Err()
+			driverActive = false
+			break InputWatcher
 		case chunk, ok := <-TextReader:
-			if !ok {
+			if !ok || !driverActive {
 				break InputWatcher
-			}
-			if chunk == "" {
-				break
 			}
 			ch := &textChunk{Text: chunk, TryTriggerGeneration: true}
 			if err := conn.WriteJSON(ch); err != nil {
@@ -229,19 +248,25 @@ InputWatcher:
 	}
 
 	// Send final "" to close out TTS buffer
-	if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
-		if ctx.Err() == nil {
-			errCh <- err
+	if driverActive && !driverError {
+		if err := conn.WriteJSON(map[string]string{"text": ""}); err != nil {
+			if ctx.Err() == nil {
+				errCh <- err
+			}
 		}
 	}
-
-	// Wait
+	conn.Close()
 	wg.Wait()
 
 	// Errors?
 	select {
 	case readErr := <-errCh:
-		return readErr
+		if driverActive || driverError {
+			// Only send if the driver is active or the unexpected error flag is active
+			return readErr
+		} else {
+			return nil
+		}
 	default:
 	}
 
