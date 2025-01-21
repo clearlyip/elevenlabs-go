@@ -189,7 +189,6 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 
 	// Send initial request
 	if err := conn.WriteJSON(req); err != nil {
-		fmt.Println("🌱ELEVENLABS DRIVER: Error JSON1: ", err)
 		return err
 	}
 
