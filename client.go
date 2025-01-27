@@ -415,8 +415,8 @@ func (c *Client) TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsR
 // speech conversion, a modelID string argument that represents the ID of the model to be used for the conversion,
 // a TextToSpeechInputStreamingRequest argument that contains the settings for the conversion and
 // an optional list of QueryFunc 'queries' to modify the request.
-func (c *Client) TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
-	return c.doInputStreamingRequest(c.ctx, textReader, responseChan, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
+func (c *Client) TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, AudioResponsePipe io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
+	return c.doInputStreamingRequest(c.ctx, textReader, responseChan, AudioResponsePipe, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
 }
 
 // GetModels retrieves the list of all available models.
