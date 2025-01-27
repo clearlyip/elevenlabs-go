@@ -220,7 +220,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					return
 				}
 				var input StreamingInputResponse
-				//var response StreamingOutputResponse
+				var response StreamingOutputResponse
 				if err := conn.ReadJSON(&input); err != nil {
 					if driverActive {
 						errCh <- err
@@ -243,17 +243,17 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
-				if _, err := AudioResponsePipe.Write(b); err != nil {
-					break
-				}
-				// response = StreamingOutputResponse{
-				// 	Audio:               b,
-				// 	IsFinal:             input.IsFinal,
-				// 	NormalizedAlignment: input.NormalizedAlignment,
-				// 	Alignment:           input.Alignment,
+				// if _, err := AudioResponsePipe.Write(b); err != nil {
+				// 	break
 				// }
+				response = StreamingOutputResponse{
+					Audio:               []byte(b),
+					IsFinal:             input.IsFinal,
+					NormalizedAlignment: input.NormalizedAlignment,
+					Alignment:           input.Alignment,
+				}
 
-				//ResponseChannel <- response
+				ResponseChannel <- response
 			}
 		}
 	}(&wg, errCh)
