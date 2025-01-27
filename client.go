@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"net/url"
@@ -229,7 +230,11 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
+				table := crc32.MakeTable(crc32.IEEE)
 				input.Audio = string([]byte(input.Audio))
+				checksum := crc32.Checksum([]byte(input.Audio), table)
+				fmt.Println("********** ELEVENLABS CHECKSUM: " + fmt.Sprint(checksum))
+
 				b, err := base64.StdEncoding.DecodeString(input.Audio)
 				if err != nil {
 					if driverActive {
