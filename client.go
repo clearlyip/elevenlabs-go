@@ -6,6 +6,7 @@ package elevenlabs
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -142,8 +143,15 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	return err
 }
 
-type StreamingOutputResponse struct {
+type StreamingInputResponse struct {
 	Audio               string                    `json:"audio"`
+	IsFinal             bool                      `json:"isFinal"`
+	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
+	Alignment           StreamingAlignmentSegment `json:"alignment"`
+}
+
+type StreamingOutputResponse struct {
+	Audio               []byte                    `json:"audio"`
 	IsFinal             bool                      `json:"isFinal"`
 	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
 	Alignment           StreamingAlignmentSegment `json:"alignment"`
@@ -210,8 +218,9 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				if !driverActive {
 					return
 				}
+				var input StreamingInputResponse
 				var response StreamingOutputResponse
-				if err := conn.ReadJSON(&response); err != nil {
+				if err := conn.ReadJSON(&input); err != nil {
 					if driverActive {
 						errCh <- err
 						driverError = true
@@ -219,6 +228,22 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
+				b, err := base64.StdEncoding.DecodeString(input.Audio)
+				if err != nil {
+					if driverActive {
+						errCh <- err
+						driverError = true
+						inputCancel()
+					}
+					return
+				}
+				response = StreamingOutputResponse{
+					Audio:               b,
+					IsFinal:             input.IsFinal,
+					NormalizedAlignment: input.NormalizedAlignment,
+					Alignment:           input.Alignment,
+				}
+
 				ResponseChannel <- response
 			}
 		}
