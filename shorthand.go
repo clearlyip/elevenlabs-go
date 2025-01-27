@@ -16,8 +16,8 @@ func TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsReq TextToSpe
 }
 
 // TextToSpeechInputStream calls the TextToSpeechInputStream method on the default client.
-func TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
-	return getDefaultClient().TextToSpeechInputStream(textReader, responseChan, voiceID, modelID, ttsReq, queries...)
+func TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, AudioResponsePipe io.Writer,voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
+	return getDefaultClient().TextToSpeechInputStream(textReader, responseChan,AudioResponsePipe, voiceID, modelID, ttsReq, queries...)
 }
 
 // GetModels calls the GetModels method on the default client.
