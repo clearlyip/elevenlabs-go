@@ -239,11 +239,11 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
-				// if _, err := AudioResponsePipe.Write(b); err != nil {
-				// 	break
-				// }
+				if _, err := AudioResponsePipe.Write(b); err != nil {
+					break
+				}
 				response = StreamingOutputResponse{
-					Audio:               append([]byte(nil), b...),
+					//Audio:               append([]byte(nil), b...),
 					IsFinal:             input.IsFinal,
 					NormalizedAlignment: input.NormalizedAlignment,
 					Alignment:           input.Alignment,
