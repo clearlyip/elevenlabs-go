@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"net/http"
 	"net/url"
@@ -167,7 +166,7 @@ type StreamingAlignmentSegment struct {
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
 // AudioResponsePipe io.Writer,
-func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, AudioResponsePipe io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true // Driver shut down?
 	driverError := false // Unexpected errors
 
@@ -221,7 +220,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					return
 				}
 				var input StreamingInputResponse
-				var response StreamingOutputResponse
+				//var response StreamingOutputResponse
 				if err := conn.ReadJSON(&input); err != nil {
 					if driverActive {
 						errCh <- err
@@ -230,10 +229,10 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
-				table := crc32.MakeTable(crc32.IEEE)
-				input.Audio = string([]byte(input.Audio))
-				checksum := crc32.Checksum([]byte(input.Audio), table)
-				fmt.Println("********** ELEVENLABS CHECKSUM: " + fmt.Sprint(checksum))
+				// table := crc32.MakeTable(crc32.IEEE)
+				// input.Audio = string([]byte(input.Audio))
+				// checksum := crc32.Checksum([]byte(input.Audio), table)
+				// fmt.Println("********** ELEVENLABS CHECKSUM: " + fmt.Sprint(checksum))
 
 				b, err := base64.StdEncoding.DecodeString(input.Audio)
 				if err != nil {
@@ -244,14 +243,17 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
-				response = StreamingOutputResponse{
-					Audio:               b,
-					IsFinal:             input.IsFinal,
-					NormalizedAlignment: input.NormalizedAlignment,
-					Alignment:           input.Alignment,
+				if _, err := AudioResponsePipe.Write(b); err != nil {
+					break
 				}
+				// response = StreamingOutputResponse{
+				// 	Audio:               b,
+				// 	IsFinal:             input.IsFinal,
+				// 	NormalizedAlignment: input.NormalizedAlignment,
+				// 	Alignment:           input.Alignment,
+				// }
 
-				ResponseChannel <- response
+				//ResponseChannel <- response
 			}
 		}
 	}(&wg, errCh)
