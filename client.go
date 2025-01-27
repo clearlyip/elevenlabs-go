@@ -165,6 +165,7 @@ type StreamingAlignmentSegment struct {
 
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
+// AudioResponsePipe io.Writer,
 func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true // Driver shut down?
 	driverError := false // Unexpected errors
@@ -228,6 +229,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
+				input.Audio = string([]byte(input.Audio))
 				b, err := base64.StdEncoding.DecodeString(input.Audio)
 				if err != nil {
 					if driverActive {
