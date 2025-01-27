@@ -229,10 +229,6 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
-				// table := crc32.MakeTable(crc32.IEEE)
-				// input.Audio = string([]byte(input.Audio))
-				// checksum := crc32.Checksum([]byte(input.Audio), table)
-				// fmt.Println("********** ELEVENLABS CHECKSUM: " + fmt.Sprint(checksum))
 
 				b, err := base64.StdEncoding.DecodeString(input.Audio)
 				if err != nil {
@@ -247,7 +243,7 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				// 	break
 				// }
 				response = StreamingOutputResponse{
-					Audio:               []byte(b),
+					Audio:               append([]byte(nil), b...),
 					IsFinal:             input.IsFinal,
 					NormalizedAlignment: input.NormalizedAlignment,
 					Alignment:           input.Alignment,
