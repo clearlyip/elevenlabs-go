@@ -239,16 +239,17 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 					}
 					return
 				}
+				// Send audio through the pipeline
 				if _, err := AudioResponsePipe.Write(b); err != nil {
 					break
 				}
+
+				// Send non-audio via the response channel
 				response = StreamingOutputResponse{
-					//Audio:               append([]byte(nil), b...),
 					IsFinal:             input.IsFinal,
 					NormalizedAlignment: input.NormalizedAlignment,
 					Alignment:           input.Alignment,
 				}
-
 				ResponseChannel <- response
 			}
 		}
