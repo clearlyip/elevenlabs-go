@@ -6,6 +6,7 @@ package elevenlabs
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -142,8 +143,15 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	return err
 }
 
-type StreamingOutputResponse struct {
+type StreamingInputResponse struct {
 	Audio               string                    `json:"audio"`
+	IsFinal             bool                      `json:"isFinal"`
+	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
+	Alignment           StreamingAlignmentSegment `json:"alignment"`
+}
+
+type StreamingOutputResponse struct {
+	Audio               []byte                    `json:"audio"`
 	IsFinal             bool                      `json:"isFinal"`
 	NormalizedAlignment StreamingAlignmentSegment `json:"normalizedAlignment"`
 	Alignment           StreamingAlignmentSegment `json:"alignment"`
@@ -157,7 +165,8 @@ type StreamingAlignmentSegment struct {
 
 type WsStreamingOutputChannel chan StreamingOutputResponse
 
-func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
+// AudioResponsePipe io.Writer,
+func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan string, ResponseChannel chan StreamingOutputResponse, AudioResponsePipe io.Writer, url string, req TextToSpeechInputStreamingRequest, contentType string, queries ...QueryFunc) error {
 	driverActive := true // Driver shut down?
 	driverError := false // Unexpected errors
 
@@ -210,14 +219,36 @@ func (c *Client) doInputStreamingRequest(ctx context.Context, TextReader chan st
 				if !driverActive {
 					return
 				}
+				var input StreamingInputResponse
 				var response StreamingOutputResponse
-				if err := conn.ReadJSON(&response); err != nil {
+				if err := conn.ReadJSON(&input); err != nil {
 					if driverActive {
 						errCh <- err
 						driverError = true
 						inputCancel()
 					}
 					return
+				}
+
+				b, err := base64.StdEncoding.DecodeString(input.Audio)
+				if err != nil {
+					if driverActive {
+						errCh <- err
+						driverError = true
+						inputCancel()
+					}
+					return
+				}
+				// Send audio through the pipeline
+				if _, err := AudioResponsePipe.Write(b); err != nil {
+					break
+				}
+
+				// Send non-audio via the response channel
+				response = StreamingOutputResponse{
+					IsFinal:             input.IsFinal,
+					NormalizedAlignment: input.NormalizedAlignment,
+					Alignment:           input.Alignment,
 				}
 				ResponseChannel <- response
 			}
@@ -381,8 +412,8 @@ func (c *Client) TextToSpeechStream(streamWriter io.Writer, voiceID string, ttsR
 // speech conversion, a modelID string argument that represents the ID of the model to be used for the conversion,
 // a TextToSpeechInputStreamingRequest argument that contains the settings for the conversion and
 // an optional list of QueryFunc 'queries' to modify the request.
-func (c *Client) TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
-	return c.doInputStreamingRequest(c.ctx, textReader, responseChan, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
+func (c *Client) TextToSpeechInputStream(textReader chan string, responseChan chan StreamingOutputResponse, AudioResponsePipe io.Writer, voiceID string, modelID string, ttsReq TextToSpeechInputStreamingRequest, queries ...QueryFunc) error {
+	return c.doInputStreamingRequest(c.ctx, textReader, responseChan, AudioResponsePipe, fmt.Sprintf("%s/text-to-speech/%s/stream-input?model_id=%s", c.baseWSUrl, voiceID, modelID), ttsReq, contentTypeJSON, queries...)
 }
 
 // GetModels retrieves the list of all available models.
