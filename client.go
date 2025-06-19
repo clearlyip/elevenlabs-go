@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	neturl "net/url"
 	"strings"
@@ -88,20 +90,34 @@ func NewClient(ctx context.Context, apiKey string, reqTimeout time.Duration) *Cl
 	return &Client{baseURL: elevenlabsBaseURL, baseWSUrl: elevenlabsBaseWSURL, apiKey: apiKey, timeout: reqTimeout, ctx: ctx}
 }
 
-func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method, url string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
+func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method, urlStr string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
+	dbgString := "✏️ ELEVENLABS [DEBUG] "
+	errorString := "✏️ \x1b[31mELEVENLABS [ERROR]\x1b[0m "
 	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(timeoutCtx, method, url, bodyBuf)
+
+	var bodyBytes []byte
+	if bodyBuf != nil {
+		buf, err := io.ReadAll(bodyBuf)
+		if err != nil {
+			log.Printf(dbgString+"failed to read body for logging: %v", err)
+		}
+		bodyBytes = buf
+		bodyBuf = bytes.NewReader(buf)
+	}
+
+	req, err := http.NewRequestWithContext(timeoutCtx, method, urlStr, bodyBuf)
 	if err != nil {
+		log.Printf(dbgString+"NewRequest error: %v", err)
 		return err
 	}
 
-	req.Header.Add("Accept", "*/*")
+	req.Header.Set("Accept", "*/*")
 	if contentType != "" {
-		req.Header.Add("Content-Type", contentType)
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.apiKey != "" {
-		req.Header.Add("xi-api-key", c.apiKey)
+		req.Header.Set("xi-api-key", c.apiKey)
 	}
 
 	q := req.URL.Query()
@@ -110,45 +126,62 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	}
 	req.URL.RawQuery = q.Encode()
 
+	dumpReq, _ := httputil.DumpRequestOut(req, true)
+	log.Printf(dbgString+" >>> HTTP REQUEST >>>\n%s", string(dumpReq))
+	if len(bodyBytes) > 0 {
+		log.Printf(dbgString+"Request Body:\n%s", string(bodyBytes))
+	}
+
 	client := &http.Client{}
+	log.Printf(dbgString+"Sending request to %s …", req.URL.String())
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf(errorString+"client.Do error: %v", err)
 		return err
 	}
 	defer resp.Body.Close()
 
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf(errorString+"reading resp.Body: %v", err)
+		return err
+	}
+
+	log.Printf(dbgString+" <<< HTTP RESPONSE <<<\nStatus: %d %s\nHeaders:", resp.StatusCode, resp.Status)
+	for k, vals := range resp.Header {
+		log.Printf("  %s: %s", k, strings.Join(vals, ", "))
+	}
+	log.Printf(dbgString+" Response body:\n%s", string(respBytes))
+
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(`\n\n\x1b[31m ---- ELEVENLABS REQUEST ERROR ---- \x1b[0m`)
-		for name, values := range resp.Header {
-			// values is a []string; join if you like
-			fmt.Printf("Response header: %s: %s\n", name, strings.Join(values, ", "))
-		}
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		fmt.Println("Response body:", string(respBody))
-		fmt.Println(`\n\n\x1b[31m ---- ELEVENLABS REQUEST ERROR ---- \x1b[0m`)
 		switch resp.StatusCode {
 		case http.StatusBadRequest, http.StatusUnauthorized:
-			apiErr := &APIError{}
-			if err := json.Unmarshal(respBody, apiErr); err != nil {
-				return err
+			var apiErr APIError
+			if err := json.Unmarshal(respBytes, &apiErr); err != nil {
+				return fmt.Errorf("failed to unmarshal APIError: %w", err)
 			}
-			return apiErr
+			return &apiErr
+
 		case http.StatusUnprocessableEntity:
-			valErr := &ValidationError{}
-			if err := json.Unmarshal(respBody, valErr); err != nil {
-				return err
+			var valErr ValidationError
+			if err := json.Unmarshal(respBytes, &valErr); err != nil {
+				return fmt.Errorf("failed to unmarshal ValidationError: %w", err)
 			}
-			return valErr
+			return &valErr
+
 		default:
-			return fmt.Errorf("unexpected HTTP status \"%d %s\" returned from server", resp.StatusCode, http.StatusText(resp.StatusCode))
+			return fmt.Errorf("unexpected HTTP status %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
 	}
 
-	_, err = io.Copy(RespBodyWriter, resp.Body)
-	return err
+	reader := bytes.NewReader(respBytes)
+	if _, err := io.Copy(RespBodyWriter, reader); err != nil {
+		log.Printf(errorString+" copying response to RespBodyWriter: %v", err)
+		return err
+	}
+
+	log.Printf(dbgString + " Request completed successfully")
+	return nil
 }
 
 type StreamingInputResponse struct {
