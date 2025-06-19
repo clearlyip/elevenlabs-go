@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	neturl "net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -117,10 +118,17 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		fmt.Println(`\n\n\x1b[31m ---- ELEVENLABS REQUEST ERROR ---- \x1b[0m`)
+		for name, values := range resp.Header {
+			// values is a []string; join if you like
+			fmt.Printf("Response header: %s: %s\n", name, strings.Join(values, ", "))
+		}
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}
+		fmt.Println("Response body:", string(respBody))
+		fmt.Println(`\n\n\x1b[31m ---- ELEVENLABS REQUEST ERROR ---- \x1b[0m`)
 		switch resp.StatusCode {
 		case http.StatusBadRequest, http.StatusUnauthorized:
 			apiErr := &APIError{}
