@@ -12,10 +12,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	neturl "net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -91,24 +89,24 @@ func NewClient(ctx context.Context, apiKey string, reqTimeout time.Duration) *Cl
 }
 
 func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method, urlStr string, bodyBuf io.Reader, contentType string, queries ...QueryFunc) error {
-	dbgString := "✏️ ELEVENLABS [DEBUG] "
+	//dbgString := "✏️ ELEVENLABS [DEBUG] "
 	errorString := "✏️ \x1b[31mELEVENLABS [ERROR]\x1b[0m "
 	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	var bodyBytes []byte
-	if bodyBuf != nil {
-		buf, err := io.ReadAll(bodyBuf)
-		if err != nil {
-			log.Printf(dbgString+"failed to read body for logging: %v", err)
-		}
-		bodyBytes = buf
-		bodyBuf = bytes.NewReader(buf)
-	}
+	// var bodyBytes []byte
+	// if bodyBuf != nil {
+	// 	buf, err := io.ReadAll(bodyBuf)
+	// 	if err != nil {
+	// 		log.Printf(dbgString+"failed to read body for logging: %v", err)
+	// 	}
+	// 	bodyBytes = buf
+	// 	bodyBuf = bytes.NewReader(buf)
+	// }
 
 	req, err := http.NewRequestWithContext(timeoutCtx, method, urlStr, bodyBuf)
 	if err != nil {
-		log.Printf(dbgString+"NewRequest error: %v", err)
+		log.Printf(errorString+"NewRequest error: %v", err)
 		return err
 	}
 
@@ -126,14 +124,14 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 	}
 	req.URL.RawQuery = q.Encode()
 
-	dumpReq, _ := httputil.DumpRequestOut(req, true)
-	log.Printf(dbgString+" >>> HTTP REQUEST >>>\n%s", string(dumpReq))
-	if len(bodyBytes) > 0 {
-		log.Printf(dbgString+"Request Body:\n%s", string(bodyBytes))
-	}
+	// dumpReq, _ := httputil.DumpRequestOut(req, true)
+	// log.Printf(dbgString+" >>> HTTP REQUEST >>>\n%s", string(dumpReq))
+	// if len(bodyBytes) > 0 {
+	// 	log.Printf(dbgString+"Request Body:\n%s", string(bodyBytes))
+	// }
 
 	client := &http.Client{}
-	log.Printf(dbgString+"Sending request to %s …", req.URL.String())
+	//log.Printf(dbgString+"Sending request to %s …", req.URL.String())
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf(errorString+"client.Do error: %v", err)
@@ -147,11 +145,11 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 		return err
 	}
 
-	log.Printf(dbgString+" <<< HTTP RESPONSE <<<\nStatus: %d %s\nHeaders:", resp.StatusCode, resp.Status)
-	for k, vals := range resp.Header {
-		log.Printf("  %s: %s", k, strings.Join(vals, ", "))
-	}
-	log.Printf(dbgString+" Response body:\n%s", string(respBytes))
+	//log.Printf(dbgString+" <<< HTTP RESPONSE <<<\nStatus: %d %s\nHeaders:", resp.StatusCode, resp.Status)
+	// for k, vals := range resp.Header {
+	// 	log.Printf("  %s: %s", k, strings.Join(vals, ", "))
+	// }
+	//log.Printf(dbgString+" Response body:\n%s", string(respBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		switch resp.StatusCode {
@@ -180,7 +178,7 @@ func (c *Client) doRequest(ctx context.Context, RespBodyWriter io.Writer, method
 		return err
 	}
 
-	log.Printf(dbgString + " Request completed successfully")
+	//log.Printf(dbgString + " Request completed successfully")
 	return nil
 }
 
