@@ -35,6 +35,7 @@ type Model struct {
 type TextToSpeechRequest struct {
 	Text          string         `json:"text"`
 	ModelID       string         `json:"model_id,omitempty"`
+	LanguageCode  string         `json:"language_code,omitempty"`
 	VoiceSettings *VoiceSettings `json:"voice_settings,omitempty"`
 }
 
