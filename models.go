@@ -44,10 +44,10 @@ type GenerationConfig struct {
 }
 
 type TextToSpeechInputStreamingRequest struct {
-	Text                 string            `json:"text"`
-	TryTriggerGeneration bool              `json:"try_trigger_generation"`
-	VoiceSettings        *VoiceSettings    `json:"voice_settings,omitempty"`
-	GenerationConfig     *GenerationConfig `json:"generation_config,omitempty"`
+	Text             string            `json:"text"`
+	LanguageCode     string            `json:"language_code,omitempty"`
+	VoiceSettings    *VoiceSettings    `json:"voice_settings,omitempty"`
+	GenerationConfig *GenerationConfig `json:"generation_config,omitempty"`
 }
 
 type GetVoicesResponse struct {
